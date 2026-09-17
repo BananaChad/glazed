@@ -18,7 +18,6 @@
 
 **63 modules** across 3 categories. Minecraft **1.21.4, 1.21.11, 26.1.2**.
 
-**if u want a better client thats paid (cheap) get http://discord.gg/kuziclient**
 ---
 
 ## 🚀Features
