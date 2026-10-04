@@ -7,7 +7,6 @@ on:
   pull_request:
   workflow_dispatch:
 
-
 permissions:
   contents: read
 
@@ -25,6 +24,9 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
           cache: gradle
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
 
       - name: Build
         run: ./gradlew build
