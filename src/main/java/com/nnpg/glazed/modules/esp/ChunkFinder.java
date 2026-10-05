@@ -715,6 +715,9 @@ public class ChunkFinder extends Module {
         int bottom = chunk.getMinY();
         boolean inEnd = mc.level != null && mc.level.dimension() == Level.END;
 
+        // Build predicate once per chunk scan
+        java.util.function.Predicate<BlockState> relevantPredicate = this::isRelevantBlockForScan;
+
         for (int index = 0; index < sections.length; index++) {
             if (!shouldScan) return;
 
@@ -723,6 +726,9 @@ public class ChunkFinder extends Module {
 
             int sectionBottom = bottom + index * 16;
             if (sectionBottom > 128 || sectionBottom + 15 < 0) continue;
+
+            // Skip entire section if no relevant blocks (fast path)
+            if (!section.maybeHas(relevantPredicate)) continue;
 
             for (int y = 0; y < 16; y++) {
                 int worldY = sectionBottom + y;
@@ -738,6 +744,29 @@ public class ChunkFinder extends Module {
                 }
             }
         }
+    }
+
+    // Predicate for section-level culling
+    private boolean isRelevantBlockForScan(BlockState state) {
+        Block block = state.getBlock();
+        return block == Blocks.DEEPSLATE
+            || block == Blocks.COBBLED_DEEPSLATE
+            || block == Blocks.POLISHED_DEEPSLATE
+            || block == Blocks.DEEPSLATE_BRICKS
+            || block == Blocks.DEEPSLATE_TILES
+            || block == Blocks.CHISELED_DEEPSLATE
+            || block == Blocks.END_STONE
+            || block == Blocks.WAXED_COPPER_BLOCK
+            || block == Blocks.WAXED_OXIDIZED_COPPER
+            || block == Blocks.TUFF_BRICKS
+            || block == Blocks.REPEATER
+            || block == Blocks.AMETHYST_BLOCK
+            || block == Blocks.BUDDING_AMETHYST
+            || block == Blocks.VINE
+            || block == Blocks.SEAGRASS
+            || block == Blocks.TALL_SEAGRASS
+            || state.is(BlockTags.FLOWERS)
+            || isWorkstation(block);
     }
 
     private void classifyBlock(BlockPos blockPos, BlockState state, ChunkAnalysis analysis, boolean inEnd) {

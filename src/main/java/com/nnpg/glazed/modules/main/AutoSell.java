@@ -93,8 +93,10 @@ public class AutoSell extends Module {
 
         // usable area full, close and reopen for the next batch
         if (GlazedSell.firstEmptyUsableSlot(container) < 0) {
+            // Check for more items BEFORE closing the container
+            boolean hasMoreItems = hasMatchingItems(container);
             GlazedSell.close();
-            needsReopen = hasMatchingItems(container);
+            needsReopen = hasMoreItems;
             if (!needsReopen) {
                 if (notifications.get()) info("All items sold.");
                 toggle();

@@ -84,6 +84,9 @@ public class AutoInvTotem extends Module {
     private int invOpenTicks = 0;
     private int invCloseTicks = 0;
     private boolean invAutoOpened = false;
+    
+    // Separate counter for the post-inventory-open delay to avoid race with onOpenScreen
+    private int pendingMoveDelay = 0;
 
     public AutoInvTotem() {
         super(GlazedAddon.pvp, "auto-inv-totem", "Automatically moves totems to offhand when inventory is opened after totem pop.");
@@ -182,17 +185,7 @@ public class AutoInvTotem extends Module {
             }
         }
 
-        if (invAutoOpened && invCloseTicks > 0) {
-            invCloseTicks--;
-            if (invCloseTicks == 0 && mc.screen instanceof InventoryScreen) {
-                mc.setScreen(null);
-                invAutoOpened = false;
-                if (!disableLogs.get()) {
-                    info("Auto-closed inventory.");
-                }
-            }
-        }
-
+        // Auto-close is handled in onTickDelayed to avoid duplicate logic
         if (invAutoOpened && !(mc.screen instanceof InventoryScreen)) {
             invAutoOpened = false;
             invCloseTicks = 0;
@@ -203,17 +196,32 @@ public class AutoInvTotem extends Module {
     private void onOpenScreen(OpenScreenEvent event) {
         if (!(event.screen instanceof InventoryScreen) || !needsTotem || mc.player == null) return;
 
-        delayTicks = delay.get();
+        // Use separate counter to avoid race with onTickDelayed
+        pendingMoveDelay = delay.get();
     }
 
     @EventHandler
     private void onTickDelayed(TickEvent.Post event) {
-        if (delayTicks <= 0 || mc.player == null) return;
-
-        delayTicks--;
-
-        if (delayTicks == 0) {
-            moveTotemToOffhand();
+        if (mc.player == null) return;
+        
+        // Handle pending move delay (set by onOpenScreen)
+        if (pendingMoveDelay > 0) {
+            pendingMoveDelay--;
+            if (pendingMoveDelay == 0) {
+                moveTotemToOffhand();
+            }
+        }
+        
+        // Handle auto-inventory close delay
+        if (invAutoOpened && invCloseTicks > 0) {
+            invCloseTicks--;
+            if (invCloseTicks == 0 && mc.screen instanceof InventoryScreen) {
+                mc.setScreen(null);
+                invAutoOpened = false;
+                if (!disableLogs.get()) {
+                    info("Auto-closed inventory.");
+                }
+            }
         }
     }
 

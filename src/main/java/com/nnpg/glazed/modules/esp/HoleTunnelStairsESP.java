@@ -214,6 +214,11 @@ public class HoleTunnelStairsESP extends Module {
     private static final Direction[] DIRECTIONS = { Direction.EAST, Direction.WEST, Direction.NORTH, Direction.SOUTH };
     private final Long2ObjectMap<TChunk> chunks = new Long2ObjectOpenHashMap<>();
     private final Queue<ChunkAccess> chunkQueue = new LinkedList<>();
+    // Spatial grid for fast AABB overlap detection (chunk -> list of AABBs)
+    private final Map<Long, List<AABB>> holeGrid = new HashMap<>();
+    private final Map<Long, List<AABB>> tunnelGrid = new HashMap<>();
+    private final Map<Long, List<AABB>> stairGrid = new HashMap<>();
+    private final Map<Long, List<AABB>> hole3x1Grid = new HashMap<>();
     private final Set<AABB> holes = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<AABB> tunnels = Collections.newSetFromMap(new ConcurrentHashMap<>());
     private final Set<AABB> staircases = Collections.newSetFromMap(new ConcurrentHashMap<>());
@@ -371,55 +376,67 @@ public class HoleTunnelStairsESP extends Module {
         int Ymin = mc.level.getMinY() + minY.get();
         int Ymax = mc.level.getMaxY() - maxY.get();
         int Y = mc.level.getMinY();
+        
+        // Reuse mutable position
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos();
+        
         for (LevelChunkSection section : sections) {
             if (section != null && !section.hasOnlyAir()) {
+                // Skip sections outside Y bounds
+                int sectionBottom = Y;
+                if (sectionBottom >= Ymax || sectionBottom + 15 <= Ymin) {
+                    Y += 16;
+                    continue;
+                }
+                
                 for (int z = 0; z < 16; z++) {
                     for (int x = 0; x < 16; x++) {
                         for (int y = 0; y < 16; y++) {
                             int currentY = Y + y;
                             if (currentY <= Ymin || currentY >= Ymax) continue;
-                            BlockPos pos = chunk.getPos().getBlockAt(x, currentY, z);
-                            if (isPassableBlock(pos)) {
+                            
+                            mutablePos.set(chunk.getPos().getMinBlockX() + x, currentY, chunk.getPos().getMinBlockZ() + z);
+                            if (isPassableBlock(mutablePos)) {
                                 switch (detectionMode.get()) {
                                     case ALL:
-                                        checkHole(pos, holes);
-                                        check3x1Hole(pos, holes3x1);
-                                        checkTunnel(pos);
-                                        if (diagonals.get()) checkDiagonalTunnel(pos);
-                                        checkStaircase(pos);
+                                        checkHole(mutablePos, holes);
+                                        check3x1Hole(mutablePos, holes3x1);
+                                        checkTunnel(mutablePos);
+                                        if (diagonals.get()) checkDiagonalTunnel(mutablePos);
+                                        checkStaircase(mutablePos);
                                         break;
                                     case HOLES_AND_TUNNELS:
-                                        checkHole(pos, holes);
-                                        check3x1Hole(pos, holes3x1);
-                                        checkTunnel(pos);
-                                        if (diagonals.get()) checkDiagonalTunnel(pos);
+                                        checkHole(mutablePos, holes);
+                                        check3x1Hole(mutablePos, holes3x1);
+                                        checkTunnel(mutablePos);
+                                        if (diagonals.get()) checkDiagonalTunnel(mutablePos);
                                         break;
                                     case HOLES_AND_STAIRCASES:
-                                        checkHole(pos, holes);
-                                        check3x1Hole(pos, holes3x1);
-                                        checkStaircase(pos);
+                                        checkHole(mutablePos, holes);
+                                        check3x1Hole(mutablePos, holes3x1);
+                                        checkStaircase(mutablePos);
                                         break;
                                     case TUNNELS_AND_STAIRCASES:
-                                        checkTunnel(pos);
-                                        if (diagonals.get()) checkDiagonalTunnel(pos);
-                                        checkStaircase(pos);
+                                        checkTunnel(mutablePos);
+                                        if (diagonals.get()) checkDiagonalTunnel(mutablePos);
+                                        checkStaircase(mutablePos);
                                         break;
                                     case HOLES:
-                                        checkHole(pos, holes);
-                                        check3x1Hole(pos, holes3x1);
+                                        checkHole(mutablePos, holes);
+                                        check3x1Hole(mutablePos, holes3x1);
                                         break;
                                     case TUNNELS:
-                                        checkTunnel(pos);
-                                        if (diagonals.get()) checkDiagonalTunnel(pos);
+                                        checkTunnel(mutablePos);
+                                        if (diagonals.get()) checkDiagonalTunnel(mutablePos);
                                         break;
                                     case STAIRCASES:
-                                        checkStaircase(pos);
+                                        checkStaircase(mutablePos);
                                         break;
                                     case HOLES_3X1_AND_TUNNELS:
-                                        checkHole(pos, holes);
-                                        check3x1Hole(pos, holes3x1);
-                                        checkTunnel(pos);
-                                        if (diagonals.get()) checkDiagonalTunnel(pos);
+                                        checkHole(mutablePos, holes);
+                                        check3x1Hole(mutablePos, holes3x1);
+                                        checkTunnel(mutablePos);
+                                        if (diagonals.get()) checkDiagonalTunnel(mutablePos);
                                         break;
                                 }
                             }
@@ -442,8 +459,9 @@ public class HoleTunnelStairsESP extends Module {
                     pos.getX(), pos.getY(), pos.getZ(),
                     pos.getX() + 1, currentPos.getY(), pos.getZ() + 1
                 );
-                if (!holes.contains(holeBox) && holes.stream().noneMatch(existingHole -> existingHole.intersects(holeBox))) {
+                if (!holes.contains(holeBox) && !overlapsExisting(holeGrid, holeBox)) {
                     holes.add(holeBox);
+                    addToGrid(holeGrid, holeBox);
                 }
             }
         }
@@ -460,8 +478,9 @@ public class HoleTunnelStairsESP extends Module {
                     pos.getX(), pos.getY(), pos.getZ(),
                     pos.getX() + 3, currentPos.getY(), pos.getZ() + 1
                 );
-                if (!holes3x1.contains(holeBox) && holes3x1.stream().noneMatch(existingHole -> existingHole.intersects(holeBox))) {
+                if (!holes3x1.contains(holeBox) && !overlapsExisting(hole3x1Grid, holeBox)) {
                     holes3x1.add(holeBox);
+                    addToGrid(hole3x1Grid, holeBox);
                 }
             }
         }
@@ -476,8 +495,9 @@ public class HoleTunnelStairsESP extends Module {
                     pos.getX(), pos.getY(), pos.getZ(),
                     pos.getX() + 1, currentPos.getY(), pos.getZ() + 3
                 );
-                if (!holes3x1.contains(holeBox) && holes3x1.stream().noneMatch(existingHole -> existingHole.intersects(holeBox))) {
+                if (!holes3x1.contains(holeBox) && !overlapsExisting(hole3x1Grid, holeBox)) {
                     holes3x1.add(holeBox);
+                    addToGrid(hole3x1Grid, holeBox);
                 }
             }
         }
@@ -542,8 +562,9 @@ public class HoleTunnelStairsESP extends Module {
                     Math.max(startPos.getZ(), endPos.getZ()) + 1
                 );
 
-                if (!tunnels.contains(tunnelBox) && tunnels.stream().noneMatch(existingTunnel -> existingTunnel.intersects(tunnelBox))) {
+                if (!tunnels.contains(tunnelBox) && !overlapsExisting(tunnelGrid, tunnelBox)) {
                     tunnels.add(tunnelBox);
+                    addToGrid(tunnelGrid, tunnelBox);
                 }
             }
         }
@@ -602,8 +623,9 @@ public class HoleTunnelStairsESP extends Module {
 
                 if (stepCount / minDiagonalWidth.get() >= minDiagonalLength.get()) {
                     potentialBoxes.forEach(potentialBox -> {
-                        if (!tunnels.contains(potentialBox) && tunnels.stream().noneMatch(existingDiagonal -> existingDiagonal.intersects(potentialBox))) {
+                        if (!tunnels.contains(potentialBox) && !overlapsExisting(tunnelGrid, potentialBox)) {
                             tunnels.add(potentialBox);
+                            addToGrid(tunnelGrid, potentialBox);
                         }
                     });
                 }
@@ -658,8 +680,9 @@ public class HoleTunnelStairsESP extends Module {
             }
 
             for (AABB stairsBox : potentialStaircaseBoxes) {
-                if (stepCount >= minStaircaseLength.get() && !staircases.contains(stairsBox) && !staircases.stream().anyMatch(existingStaircase -> existingStaircase.intersects(stairsBox))) {
+                if (stepCount >= minStaircaseLength.get() && !staircases.contains(stairsBox) && !overlapsExisting(stairGrid, stairsBox)) {
                     staircases.add(stairsBox);
+                    addToGrid(stairGrid, stairsBox);
                 }
             }
         }
@@ -707,6 +730,44 @@ public class HoleTunnelStairsESP extends Module {
         TUNNELS,
         STAIRCASES,
         HOLES_3X1_AND_TUNNELS
+    }
+
+    // Spatial grid helpers for O(1) AABB overlap detection
+    private static long gridKey(AABB box) {
+        int chunkX = (int) Math.floor(box.minX) >> 4;
+        int chunkZ = (int) Math.floor(box.minZ) >> 4;
+        return ChunkPos.asLong(chunkX, chunkZ);
+    }
+
+    private boolean overlapsExisting(Map<Long, List<AABB>> grid, AABB box) {
+        long key = gridKey(box);
+        List<AABB> neighbors = grid.get(key);
+        if (neighbors == null) return false;
+        for (AABB existing : neighbors) {
+            if (existing.intersects(box)) return true;
+        }
+        // Also check adjacent chunks for boxes that cross boundaries
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
+                long adjKey = ChunkPos.asLong(
+                    (int) (key >> 32) + dx,
+                    (int) key + dz
+                );
+                List<AABB> adj = grid.get(adjKey);
+                if (adj != null) {
+                    for (AABB existing : adj) {
+                        if (existing.intersects(box)) return true;
+                    }
+                }
+            }
+        }
+        return false;
+    }
+
+    private void addToGrid(Map<Long, List<AABB>> grid, AABB box) {
+        long key = gridKey(box);
+        grid.computeIfAbsent(key, k -> new ArrayList<>()).add(box);
     }
 
     private class TChunk {

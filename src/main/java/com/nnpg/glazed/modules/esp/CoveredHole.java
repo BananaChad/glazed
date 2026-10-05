@@ -70,8 +70,9 @@ public class CoveredHole extends Module {
     private ExecutorService executorService;
     private final List<Future<Map.Entry<AABB, CoveredHoleInfo>>> pendingTasks = new ArrayList<>();
 
-    private final Map<BlockPos, Boolean> solidBlockCache = new ConcurrentHashMap<>();
-    private final Map<BlockPos, BlockState> blockStateCache = new ConcurrentHashMap<>();
+    // Use Long (BlockPos.asLong) as cache keys instead of BlockPos (mutable!)
+    private final Map<Long, Boolean> solidBlockCache = new ConcurrentHashMap<>();
+    private final Map<Long, BlockState> blockStateCache = new ConcurrentHashMap<>();
 
     private HoleTunnelStairsESP holeESP;
     private int tickCounter = 0;
@@ -374,10 +375,11 @@ public class CoveredHole extends Module {
         private boolean isSolidBlockCached(BlockPos pos) {
             if (mc.level == null) return false;
 
-            return solidBlockCache.computeIfAbsent(pos, p -> {
+            long key = pos.asLong();
+            return solidBlockCache.computeIfAbsent(key, p -> {
                 try {
-                    BlockState state = mc.level.getBlockState(p);
-                    return state != null && state.isRedstoneConductor(mc.level, p);
+                    BlockState state = mc.level.getBlockState(pos);
+                    return state != null && state.isRedstoneConductor(mc.level, pos);
                 } catch (Exception e) {
                     return false;
                 }
@@ -387,9 +389,10 @@ public class CoveredHole extends Module {
         private BlockState getBlockStateCached(BlockPos pos) {
             if (mc.level == null) return null;
 
-            return blockStateCache.computeIfAbsent(pos, p -> {
+            long key = pos.asLong();
+            return blockStateCache.computeIfAbsent(key, p -> {
                 try {
-                    return mc.level.getBlockState(p);
+                    return mc.level.getBlockState(pos);
                 } catch (Exception e) {
                     return null;
                 }

@@ -36,6 +36,8 @@ public class AutoPearlChain extends Module {
         .build()
     );
 
+    private double teleportThresholdSq = 25.0; // computed in onActivate
+
     private int prevSlot = -1;
     private int switchCooldown = 0;
     private boolean waitingForTeleport = false;
@@ -52,6 +54,7 @@ public class AutoPearlChain extends Module {
             lastX = mc.player.getX();
             lastY = mc.player.getY();
             lastZ = mc.player.getZ();
+            teleportThresholdSq = teleportThreshold.get() * teleportThreshold.get();
         }
     }
 
@@ -74,9 +77,9 @@ public class AutoPearlChain extends Module {
             double dx = mc.player.getX() - lastX;
             double dy = mc.player.getY() - lastY;
             double dz = mc.player.getZ() - lastZ;
-            double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            double distSq = dx * dx + dy * dy + dz * dz;
 
-            if (dist >= teleportThreshold.get()) {
+            if (distSq >= teleportThresholdSq) {
                 if (switchBack.get()) {
                     if (switchCooldown < switchDelay.get()) {
                         switchCooldown++;

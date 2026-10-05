@@ -555,20 +555,25 @@ public class SpawnerProtect extends Module {
         double nearestDistance = Double.MAX_VALUE;
         
         double maxDistanceSq = spawnerRange.get() * spawnerRange.get();
+        int range = spawnerRange.get();
 
-        for (BlockPos pos : BlockPos.betweenClosed(
-                playerPos.offset(-spawnerRange.get(), -spawnerRange.get(), -spawnerRange.get()),
-                playerPos.offset(spawnerRange.get(), spawnerRange.get(), spawnerRange.get()))) {
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int x = -range; x <= range; x++) {
+            for (int y = -range; y <= range; y++) {
+                for (int z = -range; z <= range; z++) {
+                    cursor.set(playerPos.getX() + x, playerPos.getY() + y, playerPos.getZ() + z);
+                    
+                    if (mc.level.getBlockState(cursor).getBlock() != Blocks.SPAWNER) continue;
+                    if (invalidSpawners.contains(cursor)) continue;
 
-            if (mc.level.getBlockState(pos).getBlock() != Blocks.SPAWNER) continue;
-            if (invalidSpawners.contains(pos)) continue;
+                    double distanceSq = cursor.distToLowCornerSqr(mc.player.getX(), mc.player.getY(), mc.player.getZ());
+                    if (distanceSq > maxDistanceSq) continue;
 
-            double distanceSq = pos.distToLowCornerSqr(mc.player.getX(), mc.player.getY(), mc.player.getZ());
-            if (distanceSq > maxDistanceSq) continue;
-
-            if (distanceSq < nearestDistance) {
-                nearestDistance = distanceSq;
-                nearest = pos.immutable();
+                    if (distanceSq < nearestDistance) {
+                        nearestDistance = distanceSq;
+                        nearest = cursor.immutable();
+                    }
+                }
             }
         }
 
@@ -683,15 +688,19 @@ public class SpawnerProtect extends Module {
         BlockPos nearestChest = null;
         double nearestDistance = Double.MAX_VALUE;
 
-        for (BlockPos pos : BlockPos.betweenClosed(
-                playerPos.offset(-16, -8, -16),
-                playerPos.offset(16, 8, 16))) {
-
-            if (mc.level.getBlockState(pos).getBlock() == Blocks.ENDER_CHEST) {
-                double distance = pos.distToLowCornerSqr(mc.player.getX(), mc.player.getY(), mc.player.getZ());
-                if (distance < nearestDistance) {
-                    nearestDistance = distance;
-                    nearestChest = pos.immutable();
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        for (int x = -16; x <= 16; x++) {
+            for (int y = -8; y <= 8; y++) {
+                for (int z = -16; z <= 16; z++) {
+                    cursor.set(playerPos.getX() + x, playerPos.getY() + y, playerPos.getZ() + z);
+                    
+                    if (mc.level.getBlockState(cursor).getBlock() == Blocks.ENDER_CHEST) {
+                        double distance = cursor.distToLowCornerSqr(mc.player.getX(), mc.player.getY(), mc.player.getZ());
+                        if (distance < nearestDistance) {
+                            nearestDistance = distance;
+                            nearestChest = cursor.immutable();
+                        }
+                    }
                 }
             }
         }

@@ -4,6 +4,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.nnpg.glazed.utils.GlazedWebhook;
+import com.nnpg.glazed.utils.GlazedScheduler;
 import com.google.common.reflect.TypeToken;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -42,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.TimeUnit;
 
 public class AdvancedStashFinder extends Module {
     private static final Logger LOG = LoggerFactory.getLogger("Glazed");
@@ -196,8 +198,10 @@ public class AdvancedStashFinder extends Module {
             if (i < 0) chunks.add(chunk);
             else prevChunk = chunks.set(i, chunk);
 
-            saveJson();
-            saveCsv();
+            GlazedScheduler.schedule(() -> {
+                saveJson();
+                saveCsv();
+            }, 0, TimeUnit.MILLISECONDS);
 
             boolean isNewOrUpdated = (!chunk.equals(prevChunk) || !chunk.countsEqual(prevChunk));
 

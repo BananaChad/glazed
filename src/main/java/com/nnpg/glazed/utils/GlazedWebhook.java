@@ -47,6 +47,14 @@ public final class GlazedWebhook {
         }
     });
 
+    // Register shutdown hook for cleanup
+    static {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            EXECUTOR.shutdownNow();
+            // HttpClient doesn't need explicit shutdown in Java 11+
+        }, "Glazed-Webhook-Shutdown"));
+    }
+
     private static final HttpClient CLIENT = HttpClient.newBuilder()
         .connectTimeout(Duration.ofSeconds(5))
         .executor(EXECUTOR)

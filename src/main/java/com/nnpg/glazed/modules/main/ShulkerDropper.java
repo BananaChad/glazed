@@ -49,6 +49,8 @@ public class ShulkerDropper extends Module {
     );
 
     private int delayCounter = 0;
+    private long lastShopCommand = 0;
+    private static final long SHOP_COMMAND_COOLDOWN = 2000; // 2 seconds
 
     public ShulkerDropper() {
         super(GlazedAddon.CATEGORY, "shulker-dropper", "Automatically buys shulkers from shop and drops them.");
@@ -77,7 +79,11 @@ public class ShulkerDropper extends Module {
 
         // one chest now, nothing to navigate
         if (handler == null) {
-            ChatUtils.sendPlayerMsg("/shop");
+            long now = System.currentTimeMillis();
+            if (now - lastShopCommand >= SHOP_COMMAND_COOLDOWN) {
+                ChatUtils.sendPlayerMsg("/shop");
+                lastShopCommand = now;
+            }
             delayCounter = reopenDelay.get();
             return;
         }

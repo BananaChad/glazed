@@ -176,12 +176,16 @@ public class OneByOneHoles extends Module {
         Set<BlockPos> chunkHoles = new HashSet<>();
         int foundCount = 0;
 
+        BlockPos.MutableBlockPos cursor = new BlockPos.MutableBlockPos();
+        int minY = chunk.getMinY();
+        int maxY = minY + chunk.getHeight();
+
         for (int x = xStart; x < xStart + 16; x++) {
             for (int z = zStart; z < zStart + 16; z++) {
-                for (int y = chunk.getMinY(); y < chunk.getMinY() + chunk.getHeight(); y++) {
-                    BlockPos pos = new BlockPos(x, y, z);
-                    if (isOneByOneHole(pos)) {
-                        chunkHoles.add(pos);
+                for (int y = minY; y < maxY; y++) {
+                    cursor.set(x, y, z);
+                    if (isOneByOneHole(cursor)) {
+                        chunkHoles.add(cursor.immutable());
                         foundCount++;
                     }
                 }
@@ -228,34 +232,45 @@ public class OneByOneHoles extends Module {
 
     private boolean isOneByOneHole(BlockPos pos) {
         if (mc.level == null) return false;
+        
+        // Use mutable position to avoid allocations
+        BlockPos.MutableBlockPos mutablePos = new BlockPos.MutableBlockPos(pos.getX(), pos.getY(), pos.getZ());
+        return isOneByOneHoleMutable(mutablePos);
+    }
+
+    private boolean isOneByOneHoleMutable(BlockPos.MutableBlockPos pos) {
+        if (mc.level == null) return false;
+        
+        int py = pos.getY();
+        if (py <= 1) return false;
+
         BlockState selfState = mc.level.getBlockState(pos);
-
-        if (pos.getY() <= 1) return false;
-
         if (selfState.getBlock() != Blocks.AIR) return false;
 
         for (Direction direction : Direction.values()) {
-            BlockPos neighborPos = pos.relative(direction);
-            BlockState neighborState = mc.level.getBlockState(neighborPos);
-            if (!neighborState.isRedstoneConductor(mc.level, neighborPos)) {
+            pos.move(direction);
+            BlockState neighborState = mc.level.getBlockState(pos);
+            pos.move(direction.getOpposite());
+            if (!neighborState.isRedstoneConductor(mc.level, pos)) {
                 return false;
             }
         }
 
         for (int radius = 1; radius <= 5; radius++) {
             for (int x = -radius; x <= radius; x++) {
-                for (int y = -radius; y <= radius; y++) {
+                for (int dy = -radius; dy <= radius; dy++) {
                     for (int z = -radius; z <= radius; z++) {
-                        if (Math.abs(x) != radius && Math.abs(y) != radius && Math.abs(z) != radius) {
+                        if (Math.abs(x) != radius && Math.abs(dy) != radius && Math.abs(z) != radius) {
                             continue;
                         }
                         
-                        if (x == 0 && y == 0 && z == 0) continue;
+                        if (x == 0 && dy == 0 && z == 0) continue;
 
-                        BlockPos checkPos = pos.offset(x, y, z);
-                        BlockState checkState = mc.level.getBlockState(checkPos);
+                        pos.move(x, dy, z);
+                        BlockState checkState = mc.level.getBlockState(pos);
+                        pos.move(-x, -dy, -z);
 
-                        if (!checkState.isRedstoneConductor(mc.level, checkPos)) {
+                        if (!checkState.isRedstoneConductor(mc.level, pos)) {
                             return false;
                         }
                     }

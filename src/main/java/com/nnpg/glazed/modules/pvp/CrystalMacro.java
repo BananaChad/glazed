@@ -121,6 +121,7 @@ public class CrystalMacro extends Module {
     );
 
     private static final double LOOT_RADIUS = 10.0;
+    private static final double LOOT_RADIUS_SQ = LOOT_RADIUS * LOOT_RADIUS;
 
     private final Random random = new Random();
 

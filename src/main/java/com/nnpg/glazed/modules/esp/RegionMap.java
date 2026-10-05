@@ -657,6 +657,10 @@ public class RegionMap extends Module {
 
     private class PlayerTracker {
 
+        // Pre-computed arrow geometry cache (quantized to 1 degree = 360 entries)
+        private final int[][][] arrowCache = new int[360][][];
+        private boolean arrowCacheBuilt = false;
+
         void renderPlayerPosition(MapRenderContext ctx, Vec3 playerPos, float yaw, SettingColor indicatorColor) {
             if (ctx == null || playerPos == null || indicatorColor == null) return;
 
@@ -679,23 +683,50 @@ public class RegionMap extends Module {
             }
         }
 
-        private void renderDirectionalIndicator(int centerX, int centerY, double angle, SettingColor color) {
-            try {
-                Renderer2D.COLOR.begin();
-                Color indicatorCol = new Color(color);
-                int arrowSize = 9;
-
-                int tipX = centerX + (int) (Math.cos(angle) * arrowSize);
-                int tipY = centerY - (int) (Math.sin(angle) * arrowSize);
+        private void buildArrowCache() {
+            if (arrowCacheBuilt) return;
+            int arrowSize = 9;
+            for (int deg = 0; deg < 360; deg++) {
+                double angle = Math.toRadians(deg);
+                int tipX = (int) (Math.cos(angle) * arrowSize);
+                int tipY = -(int) (Math.sin(angle) * arrowSize);
 
                 double leftBaseAngle = angle + Math.toRadians(135.0);
                 double rightBaseAngle = angle - Math.toRadians(135.0);
 
-                int leftBaseX = centerX + (int) (Math.cos(leftBaseAngle) * arrowSize);
-                int leftBaseY = centerY - (int) (Math.sin(leftBaseAngle) * arrowSize);
-                int rightBaseX = centerX + (int) (Math.cos(rightBaseAngle) * arrowSize);
-                int rightBaseY = centerY - (int) (Math.sin(rightBaseAngle) * arrowSize);
+                int leftBaseX = (int) (Math.cos(leftBaseAngle) * arrowSize);
+                int leftBaseY = -(int) (Math.sin(leftBaseAngle) * arrowSize);
+                int rightBaseX = (int) (Math.cos(rightBaseAngle) * arrowSize);
+                int rightBaseY = -(int) (Math.sin(rightBaseAngle) * arrowSize);
 
+                // Store as [tipX, tipY, leftBaseX, leftBaseY, rightBaseX, rightBaseY]
+                arrowCache[deg] = new int[][] {
+                    {tipX, tipY},
+                    {leftBaseX, leftBaseY},
+                    {rightBaseX, rightBaseY}
+                };
+            }
+            arrowCacheBuilt = true;
+        }
+
+        private void renderDirectionalIndicator(int centerX, int centerY, double angle, SettingColor color) {
+            try {
+                buildArrowCache();
+                
+                // Quantize angle to nearest degree for cache lookup
+                int deg = (int) Math.floor(Math.toDegrees(angle) + 0.5) % 360;
+                if (deg < 0) deg += 360;
+                
+                int[][] verts = arrowCache[deg];
+                int tipX = centerX + verts[0][0];
+                int tipY = centerY + verts[0][1];
+                int leftBaseX = centerX + verts[1][0];
+                int leftBaseY = centerY + verts[1][1];
+                int rightBaseX = centerX + verts[2][0];
+                int rightBaseY = centerY + verts[2][1];
+
+                Renderer2D.COLOR.begin();
+                Color indicatorCol = new Color(color);
                 drawTriangleFilled(tipX, tipY, leftBaseX, leftBaseY, rightBaseX, rightBaseY, indicatorCol);
                 Renderer2D.COLOR.render();
             } catch (Exception e) {

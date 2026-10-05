@@ -38,6 +38,7 @@ public class PlayerDetection extends Module {
         .name("User Whitelist")
         .description("List of player names to ignore")
         .defaultValue(new ArrayList<>())
+        .onChanged(v -> invalidateWhitelistCache())
         .build()
     );
 
@@ -124,9 +125,24 @@ public class PlayerDetection extends Module {
     );
 
     private final Set<String> detectedPlayers = new HashSet<>();
+    private volatile Set<String> cachedWhitelist = null;
 
     public PlayerDetection() {
         super(GlazedAddon.CATEGORY, "player-detection", "Detects when players are in the world");
+    }
+
+    private Set<String> getFullWhitelist() {
+        Set<String> cached = cachedWhitelist;
+        if (cached != null) return cached;
+
+        Set<String> full = new HashSet<>(PERMANENT_WHITELIST);
+        full.addAll(userWhitelist.get());
+        cachedWhitelist = full;
+        return full;
+    }
+
+    private void invalidateWhitelistCache() {
+        cachedWhitelist = null;
     }
 
     @EventHandler
@@ -136,8 +152,7 @@ public class PlayerDetection extends Module {
         Set<String> currentPlayers = new HashSet<>();
         String currentPlayerName = mc.player.getGameProfile().name();
 
-        Set<String> fullWhitelist = new HashSet<>(PERMANENT_WHITELIST);
-        fullWhitelist.addAll(userWhitelist.get());
+        Set<String> fullWhitelist = getFullWhitelist();
 
         // only SpawnerProtect used to respect this, so admins kept setting us off
         AdminList adminList = Modules.get().get(AdminList.class);

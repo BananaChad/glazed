@@ -17,8 +17,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.common.ClientboundDisconnectPacket;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.phys.Vec3;
 import java.util.*;
+import java.util.function.Predicate;
 
 public class BlockNotifier extends Module {
     private final SettingGroup sg_general = settings.getDefaultGroup();
@@ -30,6 +34,7 @@ public class BlockNotifier extends Module {
         .name("blocks-to-find")
         .description("Blocks to notify when found.")
         .defaultValue(Collections.emptyList())
+        .onChanged(v -> clearProcessedChunks())
         .build()
     );
 
@@ -164,6 +169,10 @@ public class BlockNotifier extends Module {
         if (notifications.get()) info("BlockNotifier deactivated. Found %d blocks total this session.", total_blocks_found);
     }
 
+    private void clearProcessedChunks() {
+        processed_chunks.clear();
+    }
+
     @EventHandler
     private void on_prune_tick(TickEvent.Post event) {
         if (mc.player == null || ++prune_ticks < 60) return;
@@ -196,28 +205,58 @@ public class BlockNotifier extends Module {
         ChunkPos chunk_pos = event.chunk().getPos();
         if (processed_chunks.contains(chunk_pos)) return;
 
+        // Build predicate for section-level culling
+        Set<Block> targetBlocks = new HashSet<>(blocks_to_find.get());
+        if (targetBlocks.isEmpty()) return;
+        
+        Predicate<BlockState> predicate = state -> targetBlocks.contains(state.getBlock());
+
         Map<Block, Integer> found_blocks = new HashMap<>();
         Map<Block, List<BlockPos>> block_positions = new HashMap<>();
         boolean has_target_blocks = false;
 
-        for (int x = 0; x < 16; x++) {
-            for (int z = 0; z < 16; z++) {
-                for (int y = mc.level.getMinY(); y < mc.level.getHeight(); y++) {
-                    BlockPos pos = new BlockPos(chunk_pos.getMinBlockX() + x, y, chunk_pos.getMinBlockZ() + z);
-                    Block block = mc.level.getBlockState(pos).getBlock();
+        ChunkAccess chunk = event.chunk();
+        LevelChunkSection[] sections = chunk.getSections();
+        int bottom = chunk.getMinY();
+        int originX = chunk_pos.getMinBlockX();
+        int originZ = chunk_pos.getMinBlockZ();
 
-                    if (blocks_to_find.get().contains(block)) {
-                        found_blocks.put(block, found_blocks.getOrDefault(block, 0) + 1);
-                        block_positions.computeIfAbsent(block, k -> new ArrayList<>()).add(pos);
+        for (int index = 0; index < sections.length; index++) {
+            LevelChunkSection section = sections[index];
+            if (section == null || section.hasOnlyAir()) continue;
 
-                        if (!found_block_positions.contains(pos)) {
-                            found_block_positions.add(pos);
-                            new_found_blocks.add(pos);
-                            block_type_map.put(pos, block);
+            int sectionBottom = bottom + index * 16;
+            int sectionTop = sectionBottom + 15;
+            if (sectionTop < mc.level.getMinY() || sectionBottom >= mc.level.getHeight()) continue;
+
+            // Skip entire section if no target blocks
+            if (!section.maybeHas(predicate)) continue;
+
+            // Only scan Y range that overlaps with world height
+            int startY = Math.max(0, mc.level.getMinY() - sectionBottom);
+            int endY = Math.min(15, mc.level.getHeight() - sectionBottom - 1);
+
+            for (int y = startY; y <= endY; y++) {
+                int worldY = sectionBottom + y;
+                for (int x = 0; x < 16; x++) {
+                    for (int z = 0; z < 16; z++) {
+                        BlockState state = section.getBlockState(x, y, z);
+                        Block block = state.getBlock();
+
+                        if (targetBlocks.contains(block)) {
+                            BlockPos pos = new BlockPos(originX + x, worldY, originZ + z);
+                            found_blocks.put(block, found_blocks.getOrDefault(block, 0) + 1);
+                            block_positions.computeIfAbsent(block, k -> new ArrayList<>()).add(pos);
+
+                            if (!found_block_positions.contains(pos)) {
+                                found_block_positions.add(pos);
+                                new_found_blocks.add(pos);
+                                block_type_map.put(pos, block);
+                            }
+
+                            has_target_blocks = true;
+                            total_blocks_found++;
                         }
-
-                        has_target_blocks = true;
-                        total_blocks_found++;
                     }
                 }
             }

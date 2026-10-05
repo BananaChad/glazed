@@ -66,6 +66,7 @@ public class AdminHud extends Module {
             "drdonutt", "archivePedro", "Frwost", "W1zoX_", "Fluffymaster07",
             "bautiedgar", "Showered", "PastaGamer08", "Itszdeath", "0Gsummer", "Munkerlich"
         ))
+        .onChanged(v -> invalidateWatchList())
         .build()
     );
 
@@ -73,6 +74,7 @@ public class AdminHud extends Module {
         .name("pull-admin-list")
         .description("Also watch everything in the admin-list module.")
         .defaultValue(true)
+        .onChanged(v -> invalidateWatchList())
         .build()
     );
 
@@ -114,6 +116,7 @@ public class AdminHud extends Module {
     private boolean scannedOnJoin;
     private boolean seeded;
     private int ticks;
+    private volatile Set<String> cachedWatchList = null;
 
     public AdminHud() {
         super(GlazedAddon.CATEGORY, "admin-hud", "Tells you when staff are in tab.");
@@ -263,6 +266,9 @@ public class AdminHud extends Module {
     }
 
     private Set<String> watchList() {
+        Set<String> cached = cachedWatchList;
+        if (cached != null) return cached;
+
         Set<String> watching = new HashSet<>();
 
         for (String name : names.get()) {
@@ -278,7 +284,12 @@ public class AdminHud extends Module {
             }
         }
 
+        cachedWatchList = watching;
         return watching;
+    }
+
+    private void invalidateWatchList() {
+        cachedWatchList = null;
     }
 
     private static String strip(String text) {

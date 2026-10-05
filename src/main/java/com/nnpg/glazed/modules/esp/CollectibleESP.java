@@ -200,12 +200,44 @@ public class CollectibleESP extends Module {
         super(GlazedAddon.esp,"collectible-esp", "Highlights collectible items in item frames and banners!");
     }
 
+    // Cache for ItemFrame entities to avoid iterating all entities every render frame
+    private final List<ItemFrame> cachedItemFrames = new ArrayList<>();
+    private long lastFrameCacheUpdate = 0;
+    private static final long FRAME_CACHE_TTL = 500; // ms
+
+    @EventHandler
+    private void onChunkData(meteordevelopment.meteorclient.events.world.ChunkDataEvent event) {
+        // Invalidate cache when chunks load (new item frames may appear)
+        lastFrameCacheUpdate = 0;
+    }
+
+    @EventHandler
+    private void onTick(meteordevelopment.meteorclient.events.world.TickEvent.Post event) {
+        // Periodically refresh the item frame cache
+        long now = System.currentTimeMillis();
+        if (now - lastFrameCacheUpdate > FRAME_CACHE_TTL) {
+            refreshItemFrameCache();
+            lastFrameCacheUpdate = now;
+        }
+    }
+
+    private void refreshItemFrameCache() {
+        cachedItemFrames.clear();
+        if (mc.level == null) return;
+        
+        for (Entity entity : mc.level.entitiesForRendering()) {
+            if (entity instanceof ItemFrame frame) {
+                cachedItemFrames.add(frame);
+            }
+        }
+    }
+
     @EventHandler
     private void onRender(Render3DEvent event) {
         if (mc.level == null || mc.player == null) return;
         if (highlightMaps.get() || highlightItems.get()) {
-            for (Entity frame : mc.level.entitiesForRendering()) {
-                if (!(frame instanceof ItemFrame itemframe)) continue;
+            // Use cached item frames instead of iterating all entities
+            for (ItemFrame itemframe : cachedItemFrames) {
                 boolean renderedFrame = false;
                 AABB box;
                 if (highlightMaps.get() && itemframe.getItem().getItem().getDescriptionId().equals("item.minecraft.filled_map")){
